@@ -113,6 +113,33 @@ function formatTime(seconds) {
   return `${minutes}:${remainingSeconds}`
 }
 
+function playDoneBeep() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+
+  if (!AudioContext) return
+
+  const audioContext = new AudioContext()
+  const oscillator = audioContext.createOscillator()
+  const gain = audioContext.createGain()
+  const now = audioContext.currentTime
+
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(880, now)
+  gain.gain.setValueAtTime(0.0001, now)
+  gain.gain.exponentialRampToValueAtTime(0.22, now + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45)
+
+  oscillator.connect(gain)
+  gain.connect(audioContext.destination)
+  oscillator.start(now)
+  oscillator.stop(now + 0.5)
+  oscillator.addEventListener('ended', () => audioContext.close())
+}
+
+function needsSideSwitchBeep(exercise) {
+  return exercise.duration === 60 && exercise.reps === '30s each side'
+}
+
 function TypeBadge({ type }) {
   const color = colors[type]
 
@@ -153,8 +180,13 @@ function App() {
     const intervalId = window.setInterval(() => {
       setTimeLeft((seconds) => {
         if (seconds <= 1) {
+          playDoneBeep()
           setRunning(false)
           return 0
+        }
+
+        if (needsSideSwitchBeep(exercise) && seconds === 31) {
+          playDoneBeep()
         }
 
         return seconds - 1
@@ -162,7 +194,7 @@ function App() {
     }, 1000)
 
     return () => window.clearInterval(intervalId)
-  }, [running])
+  }, [exercise, running])
 
   function startRoutine() {
     setScreen('active')
