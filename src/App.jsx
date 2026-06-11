@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 const routine = [
@@ -113,12 +113,19 @@ function formatTime(seconds) {
   return `${minutes}:${remainingSeconds}`
 }
 
-function playDoneBeep() {
+function createAudioContext() {
   const AudioContext = window.AudioContext || window.webkitAudioContext
 
-  if (!AudioContext) return
+  return AudioContext ? new AudioContext() : null
+}
 
-  const audioContext = new AudioContext()
+function playDoneBeep(audioContext) {
+  if (!audioContext || audioContext.state === 'closed') return
+
+  if (audioContext.state === 'suspended') {
+    audioContext.resume()
+  }
+
   const oscillator = audioContext.createOscillator()
   const gain = audioContext.createGain()
   const now = audioContext.currentTime
@@ -133,7 +140,6 @@ function playDoneBeep() {
   gain.connect(audioContext.destination)
   oscillator.start(now)
   oscillator.stop(now + 0.5)
-  oscillator.addEventListener('ended', () => audioContext.close())
 }
 
 function needsSideSwitchBeep(exercise) {
@@ -158,6 +164,7 @@ function TypeBadge({ type }) {
 }
 
 function App() {
+  const audioContextRef = useRef(null)
   const [screen, setScreen] = useState('overview')
   const [current, setCurrent] = useState(0)
   const [timeLeft, setTimeLeft] = useState(routine[0].duration)
@@ -180,13 +187,13 @@ function App() {
     const intervalId = window.setInterval(() => {
       setTimeLeft((seconds) => {
         if (seconds <= 1) {
-          playDoneBeep()
+          playDoneBeep(audioContextRef.current)
           setRunning(false)
           return 0
         }
 
         if (needsSideSwitchBeep(exercise) && seconds === 31) {
-          playDoneBeep()
+          playDoneBeep(audioContextRef.current)
         }
 
         return seconds - 1
@@ -195,6 +202,21 @@ function App() {
 
     return () => window.clearInterval(intervalId)
   }, [exercise, running])
+
+  function primeAudio() {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = createAudioContext()
+    }
+
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume()
+    }
+  }
+
+  function toggleTimer() {
+    primeAudio()
+    setRunning((isRunning) => !isRunning)
+  }
 
   function startRoutine() {
     setScreen('active')
@@ -349,7 +371,7 @@ function App() {
           <button
             className="btn-timer"
             type="button"
-            onClick={() => setRunning((isRunning) => !isRunning)}
+            onClick={toggleTimer}
             style={{
               background: running ? '#2a2a2a' : color.text,
               color: running ? '#e8e8e8' : '#0d0d0d',
